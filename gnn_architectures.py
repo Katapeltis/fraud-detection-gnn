@@ -7,20 +7,49 @@ import torch.nn.functional as F
 class HeteroGNN(nn.Module):
     def __init__(self, in_feats, h_feats, num_classes, etypes):
         super(HeteroGNN, self).__init__()
-        # Define a separate GCN layer for each edge type
+        # Layer 1: Input to hidden
         self.conv1 = dglnn.HeteroGraphConv({
             etype: dglnn.GraphConv(in_feats, h_feats) for etype in etypes
-        })
+        }, aggregate='sum')
+        
+        # Layer 2: Hidden to hidden
         self.conv2 = dglnn.HeteroGraphConv({
+            etype: dglnn.GraphConv(h_feats, h_feats) for etype in etypes
+        }, aggregate='sum')
+        
+        # Layer 3: Hidden to hidden
+        self.conv3 = dglnn.HeteroGraphConv({
+            etype: dglnn.GraphConv(h_feats, h_feats) for etype in etypes
+        }, aggregate='sum')
+        
+        # Layer 4: Hidden to output
+        self.conv4 = dglnn.HeteroGraphConv({
             etype: dglnn.GraphConv(h_feats, num_classes) for etype in etypes
-        })
+        }, aggregate='sum')
+        
+        # Dropout layer
+        self.dropout = nn.Dropout(0.5)
+
 
     def forward(self, g, inputs):
-        # Inputs is a dictionary of node types and their features
+        # Layer 1
         h = self.conv1(g, inputs)
         h = {k: F.relu(v) for k, v in h.items()}
+        h = {k: self.dropout(v) for k, v in h.items()}  # Apply dropout
+        
+        # Layer 2
         h = self.conv2(g, h)
-        return h  
+        h = {k: F.relu(v) for k, v in h.items()}
+        h = {k: self.dropout(v) for k, v in h.items()}  # Apply dropout
+        
+        # Layer 3
+        h = self.conv3(g, h)
+        h = {k: F.relu(v) for k, v in h.items()}
+        h = {k: self.dropout(v) for k, v in h.items()}  # Apply dropout
+        
+        # Layer 4
+        h = self.conv4(g, h)
+        return h
   
     
 class FocalLoss(nn.Module):
