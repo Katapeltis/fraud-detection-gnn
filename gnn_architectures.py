@@ -28,8 +28,7 @@ class HeteroGNN(nn.Module):
         }, aggregate='sum')
         
         # Dropout layer
-        self.dropout = nn.Dropout(0.5)
-
+        self.dropout = nn.Dropout(0.2)
 
     def forward(self, g, inputs):
         # Layer 1
@@ -51,7 +50,32 @@ class HeteroGNN(nn.Module):
         h = self.conv4(g, h)
         return h
   
-    
+
+class HeteroGAT(nn.Module):
+    def __init__(self, in_feats, h_feats, num_classes, etypes, num_heads):
+        super(HeteroGAT, self).__init__()
+        # Layer 1: Input to hidden
+        self.conv1 = dglnn.HeteroGraphConv({
+            etype: dglnn.GATConv(in_feats, h_feats, num_heads) for etype in etypes
+        }, aggregate='mean')
+        
+        # Layer 2: Hidden to output
+        self.conv2 = dglnn.HeteroGraphConv({
+            etype: dglnn.GATConv(h_feats * num_heads, num_classes, 1) for etype in etypes  # Single head for output
+        }, aggregate='mean')
+
+    def forward(self, g, inputs):
+        # Layer 1
+        h = self.conv1(g, inputs)
+        h = {k: F.elu(v) for k, v in h.items()}  # Apply ELU activation
+        h = {k: v.view(-1, v.size(1) * v.size(2)) for k, v in h.items()}  # Flatten the head dimensions
+        
+        # Layer 2
+        h = self.conv2(g, h)
+        h = {k: v.squeeze(1) for k, v in h.items()}  # Remove the head dimension
+        return h
+
+
 class FocalLoss(nn.Module):
     def __init__(self, alpha=None, gamma=2, reduction='mean'):
         super(FocalLoss, self).__init__()
