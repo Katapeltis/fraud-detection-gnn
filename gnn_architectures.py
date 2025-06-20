@@ -28,26 +28,28 @@ class HeteroGNN(nn.Module):
         }, aggregate='sum')
         
         # Dropout layer
-        self.dropout = nn.Dropout(0.2)
+        self.dropout = nn.Dropout(0.15)
 
     def forward(self, g, inputs):
         # Layer 1
         h = self.conv1(g, inputs)
         h = {k: F.relu(v) for k, v in h.items()}
-        h = {k: self.dropout(v) for k, v in h.items()}  # Apply dropout
+        h = {k: self.dropout(v) for k, v in h.items()}  # dropout
         
         # Layer 2
         h = self.conv2(g, h)
         h = {k: F.relu(v) for k, v in h.items()}
-        h = {k: self.dropout(v) for k, v in h.items()}  # Apply dropout
+        h = {k: self.dropout(v) for k, v in h.items()}  # dropout
         
         # Layer 3
         h = self.conv3(g, h)
         h = {k: F.relu(v) for k, v in h.items()}
-        h = {k: self.dropout(v) for k, v in h.items()}  # Apply dropout
+        h = {k: self.dropout(v) for k, v in h.items()}  # dropout
         
         # Layer 4
         h = self.conv4(g, h)
+        ##### SIGMOID LAYER THAT SHOULD GIVE PROBABILITIES #####
+        probs = {p: torch.sigmoid(v) for p, v in h.items()}
         return h
   
 
@@ -75,6 +77,29 @@ class HeteroGAT(nn.Module):
         h = {k: v.squeeze(1) for k, v in h.items()}  # Remove the head dimension
         return h
 
+
+class HeteroGraphSAGE(nn.Module):
+    def __init__(self, in_feats, h_feats, num_classes, etypes, aggregator_type='mean'):
+        super(HeteroGraphSAGE, self).__init__()
+        # Layer 1: Input to hidden
+        self.conv1 = dglnn.HeteroGraphConv({
+            etype: dglnn.SAGEConv(in_feats, h_feats, aggregator_type) for etype in etypes
+        }, aggregate='mean')
+        
+        # Layer 2: Hidden to output
+        self.conv2 = dglnn.HeteroGraphConv({
+            etype: dglnn.SAGEConv(h_feats, num_classes, aggregator_type) for etype in etypes
+        }, aggregate='mean')
+
+    def forward(self, g, inputs):
+        # Layer 1
+        h = self.conv1(g, inputs)
+        h = {k: F.relu(v) for k, v in h.items()}  # Apply ReLU activation
+        
+        # Layer 2
+        h = self.conv2(g, h)
+        return h
+        
 
 class FocalLoss(nn.Module):
     def __init__(self, alpha=None, gamma=2, reduction='mean'):
