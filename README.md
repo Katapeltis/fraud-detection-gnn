@@ -1,7 +1,10 @@
-# Fraud Detection using Graph Neural Networks (GNNs)
+# Top-k Outlier Detection in Graphs Using Graph Neural Networks
 
-A research on anomaly detection in large graphs using several GNN architectures and other algorithms.
-Goal of the project (high-lvl): **Find top-k node anomalies** from a given graph dataset
+This repository contains the implementation and experimental framework for the dissertation:
+
+**“Top-k Outlier Detection in Graphs Using Graph Neural Networks – A Novel Approach of Evaluating GNN Architectures for Anomaly Detection.”**
+
+The work introduces and evaluates a **top-k anomaly detection methodology** for node-level outlier detection tasks in graph-structured data. It explores several GNN architectures, including **GCN, GraphSAGE, GAT (synthetic interpolation), and BWGNN**, with modifications to incorporate an additional **sigmoid probability layer** for ranking anomalies.
 
 ---
 
@@ -10,28 +13,32 @@ Goal of the project (high-lvl): **Find top-k node anomalies** from a given graph
 
 ```bash
 fraud-detection-gnn/
-├── datasets.py            # Some utils functions
-├── gnn_architectures.py   # Contains the GNN classes (GCN, GraphSAGE etc)
-├── gnn_main.py            # Execute this to run the magic
-├── model.py               # The train & evaluate functions
+├── datasets.py # Dataset loading, enrichment with structural features
+├── gnn_architectures.py # GNN architectures and custom loss functions
+├── model.py # Training and evaluation utilities
+├── gnn_main.py # Main training + top-k evaluation loop
+├── top_k.py # Functions for top-k accuracy computation
+├── hyperparameters.py # Hyperparameter configuration
+├── result_plots.py # Plot generation (heatmaps, error bars, accuracy curves)
 ```
+## 📊 Datasets
+
+Two benchmark datasets from the **DGL Fraud Detection suite** are used:
+
+- **FraudYelp** – reviews dataset with labeled fraudulent accounts.
+- **FraudAmazon** – e-commerce dataset with fraudulent review accounts.
+
+The `datasets.py` script optionally **enriches node features** with:
+- Degree (in/out/total)
+- Degree centrality
+- Clustering coefficient
+- Triangle counts
+
+---
 
 ## ⚙️ Instructions
 
-Reqirements:
-dgl.data
-pytorch
-sklearn
 
-1. From datasets.py, change the raw_dir to the directory where the dgl datasets are stored
-2. Run gnn_main.py from an editor. There are several parameters hardcoded in this file (epochs, dataset, architecture etc)
-
-## TODO
-
-So far the code can train a gnn on a train set, predict and evaluate a test set. 
-Next step: Get a probability score for each node, that would correlate with the probability of belonging to class 1.
-
-Attempted: in HeteroGNN class, added a sigmoid layer (probs) after the output layer, with the hope that, big score for a node -> belongs to Class 1. Doesn't work for now.
 
 
 
