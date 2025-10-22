@@ -64,4 +64,11 @@ pip install numpy==1.26.4
 pip install pandas==2.3.0
 pip install matplotlib==3.10.0
 ```
+### Step 4. Run the experiments
 
+Once the environment is ready, you can run the experiments by passing the **dataset** and **model** as command-line arguments.
+
+#### Basic usage:
+```bash
+python gnn_main.py --dataset yelp --model GraphSAGE
+```
