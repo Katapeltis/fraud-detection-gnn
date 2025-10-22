@@ -1,7 +1,11 @@
 import torch
 
-def get_top_k_positions(tensor_dict, key, k):
-    tensor = tensor_dict[key]
+def get_top_k_positions(tensor_dict, tensor_type, k):
+
+    if tensor_type == 'heterogenous':
+        tensor = tensor_dict[list(tensor_dict.keys())[0]]
+    else:
+        tensor = tensor_dict
     
     class_1 = torch.sum(tensor[:, 1] > tensor[:, 0]).item()
     class_0 = torch.sum(tensor[:, 0] > tensor[:, 1]).item()
@@ -27,18 +31,31 @@ def get_top_k_positions(tensor_dict, key, k):
 # print(f"Number of rows with second element > first: {count}")
 # print("Top k per column:", top_k_results)
 
-def analyze_tensor(tensor_dict, key, k):
-    tensor = tensor_dict[key]
+def analyze_tensor(tensor_dict, tensor_type, k):
+    if tensor_type == 'heterogenous':
+        tensor = tensor_dict[list(tensor_dict.keys())[0]]
+    else:
+        tensor = tensor_dict
+
+    class_1 = torch.sum(tensor[:, 1] > tensor[:, 0]).item()
+    class_0 = torch.sum(tensor[:, 0] > tensor[:, 1]).item()
     
-    # 1. Count rows where second element > first element
-    count = 1
+    if k >10000:
+        print(f"\nNumber of 0: {class_0}")
+        print(f"Number of 1: {class_1}")
     
-    # 2. Get top k indices per column (as separate lists)
+    #get top k indices per column (as separate lists)
     top_k_indices_col0 = torch.topk(tensor[:, 0], k).indices.tolist()
     top_k_indices_col1 = torch.topk(tensor[:, 1], k).indices.tolist()
     
-    return count, [top_k_indices_col0, top_k_indices_col1]
+    num_nodes = tensor.shape[0]
+    num_classes = tensor.shape[1]
 
-# count, top_k_indices = analyze_tensor(tensor_dict, 'review', 2)
-# print(f"Top k row indices (col0): {top_k_indices[0]}")
-# print(f"Top k row indices (col1): {top_k_indices[1]}")
+    indices = []
+    for cls in range(num_classes):
+        # pick k random indices for this class
+        random_idx = torch.randperm(num_nodes)[:k]
+        indices.append(random_idx)
+    
+    #return [top_k_indices_col0, top_k_indices_col1]
+    return indices

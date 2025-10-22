@@ -5,101 +5,61 @@ import torch.nn.functional as F
 
 
 class HeteroGNN(nn.Module):
-    def __init__(self, in_feats, h_feats, num_classes, etypes):
-        super(HeteroGNN, self).__init__()
-        # Layer 1: Input to hidden
-        self.conv1 = dglnn.HeteroGraphConv({
-            etype: dglnn.GraphConv(in_feats, h_feats) for etype in etypes
-        }, aggregate='sum')
-        
-        # Layer 2: Hidden to hidden
-        self.conv2 = dglnn.HeteroGraphConv({
-            etype: dglnn.GraphConv(h_feats, h_feats) for etype in etypes
-        }, aggregate='sum')
-        
-        # Layer 3: Hidden to hidden
-        self.conv3 = dglnn.HeteroGraphConv({
-            etype: dglnn.GraphConv(h_feats, h_feats) for etype in etypes
-        }, aggregate='sum')
-        
-        # Layer 4: Hidden to output
-        self.conv4 = dglnn.HeteroGraphConv({
-            etype: dglnn.GraphConv(h_feats, num_classes) for etype in etypes
-        }, aggregate='sum')
-        
-        # Dropout layer
-        self.dropout = nn.Dropout(0.15)
+    """
+    Heterogeneous GNN using GraphConv layers.
+    """
+    def __init__(self,
+                 in_feats: int,
+                 hidden_size: int,
+                 num_classes: int,
+                 etypes: list,
+                 num_layers: int):
+        super().__init__()
+        self.layers = nn.ModuleList()
 
-    def forward(self, g, inputs):
-        # Layer 1
-        h = self.conv1(g, inputs)
-        h = {k: F.relu(v) for k, v in h.items()}
-        h = {k: self.dropout(v) for k, v in h.items()}  # dropout
-        
-        # Layer 2
-        h = self.conv2(g, h)
-        h = {k: F.relu(v) for k, v in h.items()}
-        h = {k: self.dropout(v) for k, v in h.items()}  # dropout
-        
-        # Layer 3
-        h = self.conv3(g, h)
-        h = {k: F.relu(v) for k, v in h.items()}
-        h = {k: self.dropout(v) for k, v in h.items()}  # dropout
-        
-        # Layer 4
-        h = self.conv4(g, h)
-        ##### SIGMOID LAYER THAT SHOULD GIVE PROBABILITIES #####
-        probs = {p: torch.sigmoid(v) for p, v in h.items()}
-        return h
-  
+        # Input layer
+        self.layers.append(
+            dglnn.HeteroGraphConv(
+                {etype: dglnn.GraphConv(in_feats, hidden_size)
+                 for etype in etypes},
+                aggregate='mean'
+            )
+        )
 
-class HeteroGAT(nn.Module):
-    def __init__(self, in_feats, h_feats, num_classes, etypes, num_heads):
-        super(HeteroGAT, self).__init__()
-        # Layer 1: Input to hidden
-        self.conv1 = dglnn.HeteroGraphConv({
-            etype: dglnn.GATConv(in_feats, h_feats, num_heads) for etype in etypes
-        }, aggregate='mean')
-        
-        # Layer 2: Hidden to output
-        self.conv2 = dglnn.HeteroGraphConv({
-            etype: dglnn.GATConv(h_feats * num_heads, num_classes, 1) for etype in etypes  # Single head for output
-        }, aggregate='mean')
+        # Hidden layers
+        for _ in range(num_layers - 2):
+            self.layers.append(
+                dglnn.HeteroGraphConv(
+                    {etype: dglnn.GraphConv(hidden_size, hidden_size)
+                     for etype in etypes},
+                    aggregate='mean'
+                )
+            )
 
-    def forward(self, g, inputs):
-        # Layer 1
-        h = self.conv1(g, inputs)
-        h = {k: F.elu(v) for k, v in h.items()}  # Apply ELU activation
-        h = {k: v.view(-1, v.size(1) * v.size(2)) for k, v in h.items()}  # Flatten the head dimensions
-        
-        # Layer 2
-        h = self.conv2(g, h)
-        h = {k: v.squeeze(1) for k, v in h.items()}  # Remove the head dimension
-        return h
+        # Output layer
+        self.layers.append(
+            dglnn.HeteroGraphConv(
+                {etype: dglnn.GraphConv(hidden_size, num_classes)
+                 for etype in etypes},
+                aggregate='mean'
+            )
+        )
+        self.dropout = nn.Dropout(0.14)
 
+    def forward(self, graph, inputs):
+        h = inputs
+        # Apply all but last layer with ReLU
+        for conv in self.layers[:-1]:
+            h = conv(graph, h)
+            h = {ntype: F.relu(feat) for ntype, feat in h.items()}
+            h = {ntype: self.dropout(feat) for ntype, feat in h.items()}  # Apply dropout
 
-class HeteroGraphSAGE(nn.Module):
-    def __init__(self, in_feats, h_feats, num_classes, etypes, aggregator_type='mean'):
-        super(HeteroGraphSAGE, self).__init__()
-        # Layer 1: Input to hidden
-        self.conv1 = dglnn.HeteroGraphConv({
-            etype: dglnn.SAGEConv(in_feats, h_feats, aggregator_type) for etype in etypes
-        }, aggregate='mean')
-        
-        # Layer 2: Hidden to output
-        self.conv2 = dglnn.HeteroGraphConv({
-            etype: dglnn.SAGEConv(h_feats, num_classes, aggregator_type) for etype in etypes
-        }, aggregate='mean')
+        # Final layer without activation
+        logits = self.layers[-1](graph, h)
+        # Return raw logits and softmax probabilities for target node type
+        primary_ntype = next(iter(logits.keys()))
+        return logits, F.softmax(logits[primary_ntype], dim=1)
 
-    def forward(self, g, inputs):
-        # Layer 1
-        h = self.conv1(g, inputs)
-        h = {k: F.relu(v) for k, v in h.items()}  # Apply ReLU activation
-        
-        # Layer 2
-        h = self.conv2(g, h)
-        return h
-        
 
 class FocalLoss(nn.Module):
     def __init__(self, alpha=None, gamma=2, reduction='mean'):
@@ -129,3 +89,114 @@ class FocalLoss(nn.Module):
         elif self.reduction == 'sum':
             return focal_loss.sum()
         return focal_loss
+    
+
+class HeteroGraphSAGE(nn.Module):
+    """
+    Heterogeneous GNN using SAGEConv layers.
+    """
+    def __init__(self,
+                 in_feats: int,
+                 hidden_size: int,
+                 num_classes: int,
+                 etypes: list,
+                 num_layers: int,
+                 aggregator_type: str = 'lstm'):
+        super().__init__()
+        self.layers = nn.ModuleList()
+
+        # Input layer
+        self.layers.append(
+            dglnn.HeteroGraphConv(
+                {etype: dglnn.SAGEConv(in_feats, hidden_size, aggregator_type)
+                 for etype in etypes},
+                aggregate='mean'
+            )
+        )
+
+        # Hidden layers
+        for _ in range(num_layers - 2):
+            self.layers.append(
+                dglnn.HeteroGraphConv(
+                    {etype: dglnn.SAGEConv(hidden_size, hidden_size, aggregator_type)
+                     for etype in etypes},
+                    aggregate='mean'
+                )
+            )
+
+        # Output layer
+        self.layers.append(
+            dglnn.HeteroGraphConv(
+                {etype: dglnn.SAGEConv(hidden_size, num_classes, aggregator_type)
+                 for etype in etypes},
+                aggregate='mean'
+            )
+        )
+
+    def forward(self, graph, inputs):
+        h = inputs
+        # Apply all but last layer with ReLU
+        for conv in self.layers[:-1]:
+            h = conv(graph, h)
+            h = {ntype: F.relu(feat) for ntype, feat in h.items()}
+
+        # Final layer without activation
+        logits = self.layers[-1](graph, h)
+        primary_ntype = next(iter(logits.keys()))
+        return logits, F.softmax(logits[primary_ntype], dim=1)
+    
+
+
+class HeteroGAT(nn.Module):
+    """
+    Heterogeneous GNN using GATConv layers.
+    """
+    def __init__(self,
+                 in_feats: int,
+                 hidden_size: int,
+                 num_classes: int,
+                 etypes: list,
+                 num_layers: int,
+                 num_heads: int = 4):
+        super().__init__()
+        self.layers = nn.ModuleList()
+
+        # Input layer
+        self.layers.append(
+            dglnn.HeteroGraphConv(
+                {etype: dglnn.GATConv(in_feats, hidden_size // num_heads, num_heads)
+                 for etype in etypes},
+                aggregate='mean'
+            )
+        )
+
+        # Hidden layers
+        for _ in range(num_layers - 2):
+            self.layers.append(
+                dglnn.HeteroGraphConv(
+                    {etype: dglnn.GATConv(hidden_size, hidden_size // num_heads, num_heads)
+                     for etype in etypes},
+                    aggregate='mean'
+                )
+            )
+
+        # Output layer (single head)
+        self.layers.append(
+            dglnn.HeteroGraphConv(
+                {etype: dglnn.GATConv(hidden_size, num_classes, 1)
+                 for etype in etypes},
+                aggregate='mean'
+            )
+        )
+
+    def forward(self, graph, inputs):
+        h = inputs
+        # Apply all but last layer with ELU
+        for conv in self.layers[:-1]:
+            h = conv(graph, h)
+            h = {ntype: F.elu(feat.flatten(1)) for ntype, feat in h.items()}
+
+        # Final layer without activation
+        logits = self.layers[-1](graph, h)
+        primary_ntype = next(iter(logits.keys()))
+        return logits, F.softmax(logits[primary_ntype], dim=1)
