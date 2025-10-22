@@ -38,7 +38,30 @@ The `datasets.py` script optionally **enriches node features** with:
 
 ## ⚙️ Instructions
 
+Before running the code, set up a dedicated **Anaconda environment** to ensure dependency isolation and CUDA compatibility.
 
+### Step 1. Create and activate a new environment
+```bash
+conda create -n gnn_topk python=3.10
+conda activate gnn_topk
+```
 
+### Step 2. Install core dependencies
 
+```bash
+conda install -c dglteam/label/cu121 dgl
+pip install torch==2.3.0+cu121 -f https://download.pytorch.org/whl/torch_stable.html
+conda install -c pytorch torchdata
+conda install pyyaml
+conda install -c anaconda pydantic
+conda install scikit-learn
+```
+
+Step 3. Install compatible library versions
+```bash
+pip install setuptools==60.0.0
+pip install numpy==1.26.4
+pip install pandas==2.3.0
+pip install matplotlib==3.10.0
+```
 
